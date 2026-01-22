@@ -44,6 +44,14 @@ jobs:
         mkdir -p allure-results/api
         pytest tests/test_search_api.py -v -m api -q --maxfail=1 --alluredir=allure-results/api --junitxml=allure-results/api/junit_api.xml
 
+    - name: Upload API JUnit XML
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-junit-xml
+        path: allure-results/api/junit_api.xml
+        retention-days: 30
+
     - name: Run tests with pytest
       run: |
         pytest tests/ -v --alluredir=allure-results --tb=short
