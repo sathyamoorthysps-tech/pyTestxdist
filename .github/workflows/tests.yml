@@ -34,6 +34,14 @@ jobs:
         pip install -r requirements.txt
         playwright install chromium
 
+    - name: Run API tests (subset of matrix)
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
+      run: |
+        python -m pip install --upgrade pip
+        # Install lightweight deps needed for API test only to avoid pulling full dev stack
+        pip install requests beautifulsoup4
+        pytest tests/test_search_api.py -v -m api -q --maxfail=1 --alluredir=allure-results/api
+
     - name: Run tests with pytest
       run: |
         pytest tests/ -v --alluredir=allure-results --tb=short
