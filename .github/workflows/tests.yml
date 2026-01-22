@@ -54,6 +54,19 @@ jobs:
         path: allure-results/
         retention-days: 30
 
+    - name: Comment PR about API test
+      if: ${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const comment = `:mag: **Note:** API tests (marked with ` + "`@pytest.mark.api`" + `) run only on the *ubuntu-latest / Python 3.12* matrix entry. View API test logs/artifacts in this workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
     - name: Upload pytest cache
       if: always()
       uses: actions/upload-artifact@v4
