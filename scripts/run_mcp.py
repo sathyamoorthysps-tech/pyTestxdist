@@ -1,18 +1,99 @@
 import subprocess
 import sys
-import yaml
 from pathlib import Path
+import os
+import re
 
 ROOT = Path(__file__).parent.parent
 CONTEXT_FILE = ROOT / "mcp" / "context.yaml"
 
 
-def load_context():
-    if not CONTEXT_FILE.exists():
-        print(f"Context file not found at {CONTEXT_FILE}")
-        sys.exit(1)
-    with open(CONTEXT_FILE, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+def simple_yaml_parse(path: Path):
+    """Very small YAML-ish parser for our simple `context.yaml` structure.
+    Falls back when PyYAML isn't available.
+    Only supports the keys present in our context file (flat and one nested dict for viewport).
+    """
+    result = {}
+    current_section = None
+    viewport = {}
+
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.rstrip('\n')
+            if not line.strip() or line.strip().startswith('#'):
+                continue
+            # detect top-level key
+            m = re.match(r"^(\s*)([a-zA-Z0-9_\-]+):(?:\s*(.*))?$", line)
+            if not m:
+                continue
+            indent, key, value = m.groups()
+            indent_level = len(indent)
+
+            if indent_level == 0:
+                # top-level
+                current_section = key
+                if value is None or value == "":
+                    # start a dict
+                    result[key] = {}
+                else:
+                    # scalar at top-level
+                    # try to cast to bool/int
+                    if value.lower() in ("true", "false"):
+                        val = value.lower() == "true"
+                    else:
+                        try:
+                            val = int(value)
+                        except:
+                            val = value.strip().strip('"')
+                    result[key] = val
+            else:
+                # nested value
+                if current_section is None:
+                    continue
+                # For viewport, further nesting
+                sub_match = re.match(r"^\s*([a-zA-Z0-9_\-]+):(?:\s*(.*))?$", line)
+                if not sub_match:
+                    continue
+                skey, svalue = sub_match.groups()
+                if current_section == "playwright" and skey == "viewport":
+                    # viewport is likely followed by indented width/height lines; handle above
+                    result.setdefault("playwright", {}).setdefault("viewport", {})
+                    continue
+                # handle numeric/bool/scalar
+                if svalue is None or svalue == "":
+                    # could be a nested mapping; we'll skip
+                    continue
+                if svalue.lower() in ("true", "false"):
+                    sval = svalue.lower() == "true"
+                else:
+                    try:
+                        sval = int(svalue)
+                    except:
+                        sval = svalue.strip().strip('"')
+                if current_section == "playwright" and skey in ("width", "height"):
+                    result.setdefault("playwright", {}).setdefault("viewport", {})[skey] = sval
+                else:
+                    result.setdefault(current_section, {})[skey] = sval
+
+    return result
+
+
+try:
+    import yaml
+
+    def load_context():
+        if not CONTEXT_FILE.exists():
+            print(f"Context file not found at {CONTEXT_FILE}")
+            sys.exit(1)
+        with open(CONTEXT_FILE, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+except Exception:
+    def load_context():
+        if not CONTEXT_FILE.exists():
+            print(f"Context file not found at {CONTEXT_FILE}")
+            sys.exit(1)
+        print("PyYAML not available; using simple parser for mcp/context.yaml")
+        return simple_yaml_parse(CONTEXT_FILE)
 
 
 def build_pytest_cmd(ctx):
@@ -31,8 +112,6 @@ def main():
     # Export Playwright env vars so browser_factory picks them up
     pw = ctx.get("playwright", {})
     if pw:
-        import os
-
         os.environ.setdefault("PW_HEADLESS", str(pw.get("headless", True)))
         os.environ.setdefault("PW_NO_SANDBOX", str(pw.get("no_sandbox", False)))
         os.environ.setdefault("PW_TIMEOUT_MS", str(pw.get("timeout_ms", 30000)))
