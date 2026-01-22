@@ -74,12 +74,14 @@ jobs:
           const outcome = '${{ steps.run_api_tests.outcome }}';
           let summary = 'No summary available.';
           const junitPath = 'allure-results/api/junit_api.xml';
+          let tests = 0, failures = 0, errors = 0, skipped = 0, passed = 0;
           if (fs.existsSync(junitPath)) {
             const xml = fs.readFileSync(junitPath, 'utf8');
             // very small XML parse to extract tests/failures/errors/skipped
             const m = xml.match(/<testsuite[^>]*tests="(\d+)"[^>]*failures="(\d+)"[^>]*errors="(\d+)"[^>]*skipped="(\d+)"/);
             if (m) {
-              const tests = m[1], failures = m[2], errors = m[3], skipped = m[4];
+              tests = parseInt(m[1]); failures = parseInt(m[2]); errors = parseInt(m[3]); skipped = parseInt(m[4]);
+              passed = tests - failures - errors - skipped;
               summary = `Tests: ${tests}, Failures: ${failures}, Errors: ${errors}, Skipped: ${skipped}`;
             }
           } else {
@@ -87,9 +89,12 @@ jobs:
           }
 
           const status_icon = outcome === 'success' ? ':white_check_mark:' : ':x:';
+          const table = `| Result | Count |\n| --- | ---: |\n| Passed | ${passed} |\n| Failures | ${failures} |\n| Errors | ${errors} |\n| Skipped | ${skipped} |\n| Total | ${tests} |`;
+
           const comment = `${status_icon} **API tests** (tagged ` + "`@pytest.mark.api`" + `) ran on *ubuntu-latest / Python 3.12*\n\n` +
                         `- Outcome: **${outcome}**\n` +
                         `- Summary: **${summary}**\n\n` +
+                        `${table}\n\n` +
                         `View the workflow run for logs/artifacts: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
 
           github.rest.issues.createComment({
