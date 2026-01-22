@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+env/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Pytest
+.pytest_cache/
+
+# Playwright / test artifacts
+allure-results/
+results.xml
+pytest.log
+pytest_mcp.log
+metrics/
+
+# IDEs
+.vscode/
+.idea/
+
+# local env
+.env
