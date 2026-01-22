@@ -1,0 +1,11 @@
+project: amazon-ui-tests
+
+execution:
+  parallel: true
+  shards: 3
+  retry_flaky: true
+
+test_groups:
+  smoke: fast
+  regression: full
+  flaky: isolated
