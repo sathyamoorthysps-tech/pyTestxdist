@@ -138,6 +138,10 @@ jobs:
         pip install -r requirements-dev.txt
         playwright install chromium
 
+    - name: Run quick MCP tests (smoke)
+      run: |
+        pytest tests/mcp/test_search_iphone_mcp.py -v -x --alluredir=allure-results/mcp/quick
+
     - name: Run MCP Playwright tests
       run: |
         python scripts/run_mcp.py
