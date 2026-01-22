@@ -1,0 +1,1 @@
+PyYAML not available; using simple parser for mcp/context.yaml

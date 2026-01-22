@@ -17,7 +17,8 @@ playwright:
   screenshot_on_failure: true
   video: false
   trace: false
-  args: ["--no-sandbox"]
+  args:
+    - --no-sandbox
   results_dir: "allure-results/mcp"
 
 test_groups:

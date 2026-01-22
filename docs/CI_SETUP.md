@@ -146,6 +146,17 @@ requirements-dev.txt       # Development dependencies
 4. Create webhook for desired channel
 5. Copy webhook URL
 
+### Browser authentication for Playwright tests (Optional)
+
+Add two repository secrets when you want CI to run authenticated end-to-end/BDD tests:
+
+- `TEST_USER`: username/email for a dedicated test account
+- `TEST_PASS`: password for that account
+
+Notes:
+- Use a dedicated test account (do not reuse production credentials).
+- These secrets are only injected into jobs configured to run auth-requiring tests (see `.github/workflows/tests.yml`); when set, the test suite will generate a Playwright storage state and tests will use an `auth_page` fixture automatically (fallback to unauthenticated `page` when secrets are absent).
+
 ## Monitoring CI Status
 
 ### View Workflow Runs

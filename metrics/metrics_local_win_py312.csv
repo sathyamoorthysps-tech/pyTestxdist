@@ -1,0 +1,2 @@
+job,os,python,tests_total,failures,errors,skipped,passed
+test-local,Windows,3.12,4,0,0,0,4

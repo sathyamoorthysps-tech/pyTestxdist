@@ -22,6 +22,12 @@ def test_search_and_sort_iphone_mcp():
     headless = bool(pw_cfg.get("headless", True))
     no_sandbox = bool(pw_cfg.get("no_sandbox", False))
     args = pw_cfg.get("args") or ([] if not no_sandbox else ["--no-sandbox"]) 
+    # Ensure args is a Python list for Playwright.launch; the MCP context may store it as a JSON string
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except Exception:
+            args = [args]
 
     viewport = pw_cfg.get("viewport", {})
     vw = int(viewport.get("width", 1920))

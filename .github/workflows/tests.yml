@@ -17,6 +17,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.11', '3.12']
+    env:
+      TEST_USER: ${{ secrets.TEST_USER }}
+      TEST_PASS: ${{ secrets.TEST_PASS }}
 
     steps:
     - name: Checkout code
@@ -102,6 +105,59 @@ jobs:
           results.xml
           pytest.log
           .pytest_cache/
+        retention-days: 30
+
+    - name: Create job metrics CSV
+      if: always()
+      run: |
+        python - <<'PY'
+import csv, os, xml.etree.ElementTree as ET
+run_id = os.getenv('GITHUB_RUN_ID')
+job='test'
+os_name = os.getenv('RUNNER_OS') or os.getenv('matrix.os') or '${{ matrix.os }}'
+py = '${{ matrix.python-version }}'
+cache_hit = ''
+if os.path.exists('cache_status.txt'):
+    with open('cache_status.txt') as f:
+        for line in f:
+            if line.startswith('cache_hit='):
+                cache_hit = line.strip().split('=',1)[1]
+                break
+# API JUnit
+tests=failures=errors=skipped=passed=''
+api_outcome=''
+jpath='allure-results/api/junit_api.xml'
+if os.path.exists(jpath):
+    try:
+        tree=ET.parse(jpath)
+        root=tree.getroot()
+        tests = root.attrib.get('tests','')
+        failures = root.attrib.get('failures','')
+        errors = root.attrib.get('errors','')
+        skipped = root.attrib.get('skipped','')
+        if tests.isdigit():
+            passed = str(int(tests)-int(failures or 0)-int(errors or 0)-int(skipped or 0))
+    except Exception:
+        pass
+# outcome
+api_outcome = os.getenv('API_OUTCOME','')
+metrics_dir='metrics'
+os.makedirs(metrics_dir,exist_ok=True)
+fname=os.path.join(metrics_dir,f'metrics_{os_name}_py{py}.csv')
+with open(fname,'w',newline='') as f:
+    w=csv.writer(f)
+    w.writerow(['run_id','job','os','python','cache_hit','timestamp','tests_total','failures','errors','skipped','passed','api_outcome'])
+    from datetime import datetime
+    w.writerow([run_id,job,os_name,py,cache_hit,datetime.utcnow().isoformat(),tests,failures,errors,skipped,passed,api_outcome])
+print('Wrote',fname)
+PY
+
+    - name: Upload job metrics CSV
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ci-metrics-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: metrics/
         retention-days: 30
 
     - name: Comment PR about API test
@@ -219,6 +275,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: coverage
     if: always()
+    env:
+      TEST_USER: ${{ secrets.TEST_USER }}
+      TEST_PASS: ${{ secrets.TEST_PASS }}
 
     steps:
     - name: Checkout code
