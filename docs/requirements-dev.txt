@@ -1,0 +1,23 @@
+# Development requirements (machine-readable)
+pytest==8.3.2
+pytest-xdist==3.8.0
+pytest-cov==4.1.0
+pytest-timeout==2.1.0
+pytest-html==4.1.1
+pytest-metadata==3.1.1
+pytest-base-url==2.1.0
+pytest-bdd==7.2.0
+allure-pytest==2.13.5
+allure-behave==2.13.5
+playwright==1.40.0
+pylint==3.0.0
+flake8==6.1.0
+black==23.12.0
+bandit==1.7.5
+safety==2.3.5
+pip-audit==2.6.1
+radon==6.0.1
+coverage==7.3.2
+python-dotenv==1.0.0
+requests==2.31.0
+PyYAML==6.0

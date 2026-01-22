@@ -1,44 +1,47 @@
-[
-    {
-        "label": "Python: Pytest Current File",
-        "type": "shell",
-        "command": "python",
-        "args": ["-m", "pytest", "${file}", "-v", "--tb=short"],
-        "problemMatcher": ["$pytest"],
-        "group": {
-            "kind": "test",
-            "isDefault": true
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Python: Pytest Current File",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "pytest", "${file}", "-v", "--tb=short"],
+            "problemMatcher": ["$pytest"],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Python: Pytest All Tests",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "pytest", "tests/", "-v"],
+            "problemMatcher": ["$pytest"],
+            "group": "test"
+        },
+        {
+            "label": "Python: Pytest Parallel",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "pytest", "tests/", "-n", "auto", "-v"],
+            "problemMatcher": ["$pytest"],
+            "group": "test"
+        },
+        {
+            "label": "Python: Pytest with Report",
+            "type": "shell",
+            "command": "python",
+            "args": ["-m", "pytest", "tests/", "-v", "--alluredir=allure-results"],
+            "problemMatcher": ["$pytest"],
+            "group": "test"
+        },
+        {
+            "label": "Python: View Allure Report",
+            "type": "shell",
+            "command": "allure",
+            "args": ["serve", "allure-results"],
+            "group": "test"
         }
-    },
-    {
-        "label": "Python: Pytest All Tests",
-        "type": "shell",
-        "command": "python",
-        "args": ["-m", "pytest", "tests/", "-v"],
-        "problemMatcher": ["$pytest"],
-        "group": "test"
-    },
-    {
-        "label": "Python: Pytest Parallel",
-        "type": "shell",
-        "command": "python",
-        "args": ["-m", "pytest", "tests/", "-n", "auto", "-v"],
-        "problemMatcher": ["$pytest"],
-        "group": "test"
-    },
-    {
-        "label": "Python: Pytest with Report",
-        "type": "shell",
-        "command": "python",
-        "args": ["-m", "pytest", "tests/", "-v", "--alluredir=allure-results"],
-        "problemMatcher": ["$pytest"],
-        "group": "test"
-    },
-    {
-        "label": "Python: View Allure Report",
-        "type": "shell",
-        "command": "allure",
-        "args": ["serve", "allure-results"],
-        "group": "test"
-    }
-]
+    ]
+}

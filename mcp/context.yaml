@@ -4,6 +4,21 @@ execution:
   parallel: true
   shards: 3
   retry_flaky: true
+  timeout_ms: 60000
+
+playwright:
+  browser: chromium         # chromium, firefox, webkit
+  headless: true
+  no_sandbox: true
+  timeout_ms: 60000
+  viewport:
+    width: 1920
+    height: 1080
+  screenshot_on_failure: true
+  video: false
+  trace: false
+  args: ["--no-sandbox"]
+  results_dir: "allure-results/mcp"
 
 test_groups:
   smoke: fast

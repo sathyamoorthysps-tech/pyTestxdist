@@ -1,0 +1,343 @@
+name: PyTestxdist Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.11', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Cache pip
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+          %LOCALAPPDATA%\\pip\\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        playwright install chromium
+
+    - name: Run API tests (subset of matrix)
+      id: run_api_tests
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
+      run: |
+        python -m pip install --upgrade pip
+        # Install lightweight deps needed for API test only to avoid pulling full dev stack
+        pip install requests beautifulsoup4
+        mkdir -p allure-results/api
+        pytest tests/test_search_api.py -v -m api -q --maxfail=1 --alluredir=allure-results/api --junitxml=allure-results/api/junit_api.xml
+
+    - name: Upload API JUnit XML
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-junit-xml
+        path: allure-results/api/junit_api.xml
+        retention-days: 30
+
+    - name: Upload full API allure-results
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-allure-results
+        path: allure-results/api
+        retention-days: 30
+
+    - name: Run tests with pytest (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest-timeout
+        pytest tests/ -n auto --dist=loadscope -vv --showlocals --junit-xml=results.xml --maxfail=1 --alluredir=allure-results | tee pytest.log
+
+    - name: Run tests with pytest (Windows)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest-timeout
+        pytest tests/ -n auto --dist=loadscope -vv --showlocals --junit-xml=results.xml --maxfail=1 --alluredir=allure-results | Tee-Object -FilePath pytest.log
+
+    - name: Upload test results (allure)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: allure-results-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: allure-results/
+        retention-days: 30
+
+    - name: Upload pytest artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-results-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: |
+          results.xml
+          pytest.log
+          .pytest_cache/
+        retention-days: 30
+
+    - name: Comment PR about API test
+      if: ${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const outcome = '${{ steps.run_api_tests.outcome }}';
+          let summary = 'No summary available.';
+          const junitPath = 'allure-results/api/junit_api.xml';
+          let tests = 0, failures = 0, errors = 0, skipped = 0, passed = 0;
+          if (fs.existsSync(junitPath)) {
+            const xml = fs.readFileSync(junitPath, 'utf8');
+            // very small XML parse to extract tests/failures/errors/skipped
+            const m = xml.match(/<testsuite[^>]*tests="(\d+)"[^>]*failures="(\d+)"[^>]*errors="(\d+)"[^>]*skipped="(\d+)"/);
+            if (m) {
+              tests = parseInt(m[1]); failures = parseInt(m[2]); errors = parseInt(m[3]); skipped = parseInt(m[4]);
+              passed = tests - failures - errors - skipped;
+              summary = `Tests: ${tests}, Failures: ${failures}, Errors: ${errors}, Skipped: ${skipped}`;
+            }
+          } else {
+            summary = 'JUnit file not found; check logs for details.';
+          }
+
+          const status_icon = outcome === 'success' ? ':white_check_mark:' : ':x:';
+          const table = `| Result | Count |\n| --- | ---: |\n| Passed | ${passed} |\n| Failures | ${failures} |\n| Errors | ${errors} |\n| Skipped | ${skipped} |\n| Total | ${tests} |`;
+
+          const comment = `${status_icon} **API tests** (tagged ` + "`@pytest.mark.api`" + `) ran on *ubuntu-latest / Python 3.12*\n\n` +
+                        `- Outcome: **${outcome}**\n` +
+                        `- Summary: **${summary}**\n\n` +
+                        `${table}\n\n` +
+                        `View the workflow run for logs/artifacts: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+    - name: Upload pytest cache
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-cache-${{ matrix.os }}-py${{ matrix.python-version }}
+        path: .pytest_cache/
+        retention-days: 7
+
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const allureDir = './allure-results';
+          const files = fs.readdirSync(allureDir).filter(f => f.endsWith('-result.json'));
+          const totalTests = files.length;
+          const status = '${{ job.status }}';
+          
+          const comment = `## Test Results for Python ${{ matrix.python-version }} on ${{ matrix.os }}
+          - Status: ${status}
+          - Tests: ${totalTests}
+          - [View Allure Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install coverage pytest-cov
+
+    - name: Run tests with coverage
+      run: |
+        pytest tests/ --cov=pages --cov=utils --cov-report=xml --cov-report=html --cov-report=term
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Upload HTML coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
+        retention-days: 30
+
+  mcp:
+    runs-on: ubuntu-latest
+    needs: coverage
+    if: always()
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Cache pip
+      id: cache-pip
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+          %LOCALAPPDATA%\\pip\\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Report pip cache status
+      run: |
+        echo "cache_hit=${{ steps.cache-pip.outputs.cache-hit }}" > cache_status.txt
+        echo "Cache for ${{ runner.os }} (python 3.12) - cache-hit: ${{ steps.cache-pip.outputs.cache-hit }}"
+
+    - name: Upload pip cache status
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pip-cache-status-${{ runner.os }}-py3.12
+        path: cache_status.txt
+        retention-days: 7
+
+    - name: Install dev dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        playwright install chromium
+
+    - name: Run quick MCP tests (smoke)
+      run: |
+        pytest tests/mcp/test_search_iphone_mcp.py -v -x --alluredir=allure-results/mcp/quick
+
+    - name: Run MCP Playwright tests
+      run: |
+        python scripts/run_mcp.py
+
+    - name: Upload MCP Allure results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: allure-results-mcp
+        path: allure-results/mcp
+        retention-days: 30
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Cache pip
+      id: cache-pip
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/pip
+          %LOCALAPPDATA%\\pip\\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Report pip cache status
+      run: |
+        echo "cache_hit=${{ steps.cache-pip.outputs.cache-hit }}" > cache_status.txt
+        echo "Cache for ${{ runner.os }} (python 3.12) - cache-hit: ${{ steps.cache-pip.outputs.cache-hit }}"
+
+    - name: Upload pip cache status
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pip-cache-status-${{ runner.os }}-py3.12
+        path: cache_status.txt
+        retention-days: 7
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint flake8 black
+
+    - name: Run Black formatter check
+      run: black --check tests/ pages/ utils/ || true
+
+    - name: Run Flake8 linter
+      run: flake8 tests/ pages/ utils/ --max-line-length=120 --extend-ignore=E203,W503 || true
+
+    - name: Run Pylint
+      run: pylint tests/ pages/ utils/ --fail-under=7.0 || true
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [test, coverage, lint]
+    if: failure()
+
+    steps:
+    - name: Send Slack notification
+      if: vars.SLACK_WEBHOOK != ''
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: 'PyTestxdist Tests Failed'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author
