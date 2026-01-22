@@ -52,6 +52,14 @@ jobs:
         path: allure-results/api/junit_api.xml
         retention-days: 30
 
+    - name: Upload full API allure-results
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-allure-results
+        path: allure-results/api
+        retention-days: 30
+
     - name: Run tests with pytest
       run: |
         pytest tests/ -v --alluredir=allure-results --tb=short
