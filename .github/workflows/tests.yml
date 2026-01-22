@@ -35,12 +35,14 @@ jobs:
         playwright install chromium
 
     - name: Run API tests (subset of matrix)
+      id: run_api_tests
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
       run: |
         python -m pip install --upgrade pip
         # Install lightweight deps needed for API test only to avoid pulling full dev stack
         pip install requests beautifulsoup4
-        pytest tests/test_search_api.py -v -m api -q --maxfail=1 --alluredir=allure-results/api
+        mkdir -p allure-results/api
+        pytest tests/test_search_api.py -v -m api -q --maxfail=1 --alluredir=allure-results/api --junitxml=allure-results/api/junit_api.xml
 
     - name: Run tests with pytest
       run: |
@@ -58,8 +60,30 @@ jobs:
       if: ${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' && always() }}
       uses: actions/github-script@v6
       with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
-          const comment = `:mag: **Note:** API tests (marked with ` + "`@pytest.mark.api`" + `) run only on the *ubuntu-latest / Python 3.12* matrix entry. View API test logs/artifacts in this workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+          const fs = require('fs');
+          const outcome = '${{ steps.run_api_tests.outcome }}';
+          let summary = 'No summary available.';
+          const junitPath = 'allure-results/api/junit_api.xml';
+          if (fs.existsSync(junitPath)) {
+            const xml = fs.readFileSync(junitPath, 'utf8');
+            // very small XML parse to extract tests/failures/errors/skipped
+            const m = xml.match(/<testsuite[^>]*tests="(\d+)"[^>]*failures="(\d+)"[^>]*errors="(\d+)"[^>]*skipped="(\d+)"/);
+            if (m) {
+              const tests = m[1], failures = m[2], errors = m[3], skipped = m[4];
+              summary = `Tests: ${tests}, Failures: ${failures}, Errors: ${errors}, Skipped: ${skipped}`;
+            }
+          } else {
+            summary = 'JUnit file not found; check logs for details.';
+          }
+
+          const status_icon = outcome === 'success' ? ':white_check_mark:' : ':x:';
+          const comment = `${status_icon} **API tests** (tagged ` + "`@pytest.mark.api`" + `) ran on *ubuntu-latest / Python 3.12*\n\n` +
+                        `- Outcome: **${outcome}**\n` +
+                        `- Summary: **${summary}**\n\n` +
+                        `View the workflow run for logs/artifacts: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
